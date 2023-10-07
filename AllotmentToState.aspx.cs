@@ -55,18 +55,29 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
                 hfSchemeCode.Value = ConfigurationManager.AppSettings["KeySchemeCode"].ToString();
                 lblDept.Text = hfDeptName.Value;
                 lblDept1.Text = hfDeptName.Value;
-                if ((hfUserType.Value == "A" || hfUserType.Value == "H") && hfFirstLogin.Value == "N")
+
+                if ((hfUserType.Value == "A") && hfFirstLogin.Value == "N")
                 {
                     bindGrid();
                     PopulateYear();
                     PopulateYear1();
                     bind_totalAmount();
                     bind_ActionPlanAmount();
+                    bind_totalOB();
                     PopulateScheme(hfDeptCode.Value);
                     utl.SetSessionCookie();
+
+                    if (hfOfficeType.Value == "D")
+                    {
+                        rblOfficeTypeH.Items[0].Enabled = false;
+                        rblOfficeTypeH.Items[1].Enabled = true;
+                        rblOfficeTypeH.Items[1].Selected = true;
+                        PopulateDistrictsH();
+                    }
+
                     hfSession.Value = Session["AuthTokenPage"].ToString();
                     lblMsg.Text = "";
-                   
+
                     GetAllQuarters_FromFnYear(FnYear: ddlYear.SelectedValue);
                     GetTotalAndAvail_Balance(office_code: hfOfficeCode.Value);
                     PopulateScheme1(hfDeptCode.Value);
@@ -77,8 +88,9 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
 
                 }
             }
-
+            //Response.Redirect("~/Unauthorised.aspx", true);
         }
+
         else { return; }
     }
 
@@ -155,6 +167,61 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
             dsScheme.Dispose();
         }
     }
+
+    protected void bind_totalOB()
+    {
+        DataSet dsScheme = new DataSet();
+        string SQL = string.Empty;
+        try
+        {
+
+            Regex regDept = new Regex(@"^\d{2}$");
+            Regex regYear = new Regex(@"^\d{4}-\d{2}$");
+            db.Open();
+            SQL = "select  sum(OB_Amt) Total_Available from SNA_FnYearWise_OB where F_Year='" + hfF_Year.Value + "'";
+            dsScheme = db.ExecuteDataSet(CommandType.Text, SQL);
+            db.Close();
+            if (dsScheme.Tables[0].Rows.Count > 0)
+            {
+                string amt = dsScheme.Tables[0].Rows[0]["Total_Available"].ToString();
+                if (amt != "")
+                {
+                    lbl_ob.Text = amt;
+                    HF_ob.Value = lbl_ob.Text;
+                }
+                else
+                {
+                    lbl_ob.Text = "0.00000";
+                    HF_ob.Value = "0.00000";
+                }
+
+            }
+            else
+            {
+                lbl_ob.Text = "0.00000";
+                HF_ob.Value = "0.00000";
+            }
+
+
+
+        }
+        catch (ApplicationException exception)
+        {
+            ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('" + exception.Message + "');", true);
+        }
+        catch (Exception ex)
+        {
+            ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('Your request could not be completed due to exception. Please intimate technical team for rectification!');", true);
+            string errorString = ExceptionHandler.CreateErrorMessage(ex);
+            ExceptionHandler.WriteLog(errorString);
+        }
+        finally
+        {
+
+            dsScheme.Clear();
+            dsScheme.Dispose();
+        }
+    }
     protected void bind_totalAmount()
     {
         DataSet dsScheme = new DataSet();
@@ -165,21 +232,29 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
             Regex regDept = new Regex(@"^\d{2}$");
             Regex regYear = new Regex(@"^\d{4}-\d{2}$");
             db.Open();
-            SQL = "SELECT  isnull(sum(t1.Sanction_Amt),0.00000) +isnull(t2.OB_Amt,0.00000) 'Total_Available',t2.OB_Amt from (select Sanction_Amt,Dept_Code,F_Year,Scheme_Code from SNA_Plan_Sanction) as t1 right join " +
-                "(select OB_Amt, Dept_Code, Scheme_Code, F_Year from SNA_FnYearWise_OB ) as t2 on t1.Dept_Code = t2.dept_code and t1.F_Year = t2.F_Year and t1.Scheme_Code = t2.Scheme_Code group by t2.OB_Amt ";
+            SQL = "SELECT sum(Sanction_Amt) 'Total_Available' from  SNA_Plan_Sanction where F_Year='" + hfF_Year.Value + "' ";
             dsScheme = db.ExecuteDataSet(CommandType.Text, SQL);
             db.Close();
-            if(dsScheme.Tables[0].Rows.Count > 0)
+            if (dsScheme.Tables[0].Rows.Count > 0)
             {
-                lbl_amt.Text = dsScheme.Tables[0].Rows[0]["Total_Available"].ToString();
-                hf_Sanction_OB.Value = lbl_amt.Text;
+                string amt = dsScheme.Tables[0].Rows[0]["Total_Available"].ToString();
+                if (amt != "")
+                {
+                    lbl_amt.Text = amt;
+                    hf_Sanction_OB.Value = lbl_amt.Text;
+                }
+                else
+                {
+                    lbl_amt.Text = "0.00000";
+                    hf_Sanction_OB.Value = "0.00000";
+                }
             }
             else
             {
                 lbl_amt.Text = "0.00000";
                 hf_Sanction_OB.Value = "0.00000";
             }
-           
+
 
 
         }
@@ -210,12 +285,28 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
             Regex regDept = new Regex(@"^\d{2}$");
             Regex regYear = new Regex(@"^\d{4}-\d{2}$");
             db.Open();
-            SQL = "select sum(convert(decimal(18,5),AAP_Amt)) 'Total_AAP_Amt',Office_Code from SNA_AnnualActionPlan_ProgrammeWise_Dtls where Office_Code='" + hfOfficeCode.Value+ "' group by Office_Code  ";
+            SQL = "select sum(convert(decimal(18,5),AAP_Amt)) 'Total_AAP_Amt' from SNA_AnnualActionPlan_ProgrammeWise_Dtls where F_Year='" + hfF_Year.Value + "'";
             dsScheme = db.ExecuteDataSet(CommandType.Text, SQL);
             db.Close();
-            lbl_actionAmt.Text = dsScheme.Tables[0].Rows[0]["Total_AAP_Amt"].ToString();
-            hf_actionAMT.Value = lbl_actionAmt.Text;
-
+            if (dsScheme.Tables[0].Rows.Count > 0)
+            {
+                string amt = dsScheme.Tables[0].Rows[0]["Total_AAP_Amt"].ToString();
+                if (amt != "")
+                {
+                    lbl_actionAmt.Text = amt;
+                    hf_actionAMT.Value = lbl_actionAmt.Text;
+                }
+                else
+                {
+                    lbl_actionAmt.Text = "0.00000";
+                    hf_actionAMT.Value = "0.00000";
+                }
+            }
+            else
+            {
+                lbl_actionAmt.Text = "0.00000";
+                hf_actionAMT.Value = "0.00000";
+            }
 
         }
         catch (ApplicationException exception)
@@ -293,9 +384,26 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
         {
             ViewState["OfficeType"] = "H";
             panelAction.Visible = false;
+            lblOfficeType.Text = "State Office";
+            PopulateDistrictsH();
+        }
+        if (rblOfficeTypeH.SelectedValue == "D")
+        {
+            ViewState["OfficeType"] = "D";
+            panelAction.Visible = false;
+            lblOfficeType.Text = "District";
+            PopulateDistrictsH();
+        }
+        if (rblOfficeTypeH.SelectedValue == "B")
+        {
+            ViewState["OfficeType"] = "B";
+            panelAction.Visible = false;
+            lblOfficeType.Text = "District";
+            PopulateDistrictsH();
         }
 
     }
+
     #endregion
     protected void btnCancel1_Click(object sender, System.EventArgs e)
     {
@@ -313,7 +421,9 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
     }
     protected void txtOB_Amt_AbsoluteValue_TextChanged(object sender, EventArgs e)
     {
-        decimal ob = Convert.ToDecimal(hf_Sanction_OB.Value);
+        decimal sacn = Convert.ToDecimal(hf_Sanction_OB.Value);
+        decimal OB = Convert.ToDecimal(HF_ob.Value);
+        decimal ob = sacn + OB;
         decimal action_amt = Convert.ToDecimal(hf_actionAMT.Value);
         txtOB_Amt_Crore.Text = "0";
         txtOB_Amt.Text = "";
@@ -321,16 +431,16 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
         {
             decimal Rec_Amount = Convert.ToDecimal(txtOB_Amt_AbsoluteValue.Text);
             decimal Rec_Amount_AbsoluteValue = Rec_Amount / Convert.ToDecimal("100000");
-            if(Rec_Amount_AbsoluteValue > ob)
+            if (Rec_Amount_AbsoluteValue > ob)
             {
-                ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('Allotment Amount should not be greater than Sanction and Opening Balance Amount!');", true);
+                ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('Allotment Amount should not be greater than Sanction Amount and Opening Balance !');", true);
                 ScriptManager.GetCurrent(Page).SetFocus(txtOB_Amt_AbsoluteValue);
             }
-            else if(Rec_Amount_AbsoluteValue > action_amt)
-            {
-                ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('Allotment Amount should not be greater than Action Plan Amount!');", true);
-                ScriptManager.GetCurrent(Page).SetFocus(txtOB_Amt_AbsoluteValue);
-            }
+            //else if(Rec_Amount_AbsoluteValue > action_amt)
+            //{
+            //    ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('Allotment Amount should not be greater than Action Plan Amount!');", true);
+            //    ScriptManager.GetCurrent(Page).SetFocus(txtOB_Amt_AbsoluteValue);
+            //}
             else
             {
                 txtOB_Amt.Text = Rec_Amount_AbsoluteValue.ToString();
@@ -344,7 +454,7 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
                     txt_remarks.Focus();
                 }
             }
-           
+
 
         }
     }
@@ -352,20 +462,20 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
     {
         txtOB_Amt_Crore.Text = "0";
         txtOB_Amt_AbsoluteValue.Text = "";
-            if (txtOB_Amt.Text != "" || txtOB_Amt.Text != "0")
+        if (txtOB_Amt.Text != "" || txtOB_Amt.Text != "0")
+        {
+            decimal Rec_Amount = Convert.ToDecimal(txtOB_Amt.Text);
+            decimal Rec_Amount_AbsoluteValue = Rec_Amount * Convert.ToDecimal("100000");
+            txtOB_Amt_AbsoluteValue.Text = Rec_Amount_AbsoluteValue.ToString();
+
+            if (Rec_Amount_AbsoluteValue != 0)
             {
-                decimal Rec_Amount = Convert.ToDecimal(txtOB_Amt.Text);
-                decimal Rec_Amount_AbsoluteValue = Rec_Amount * Convert.ToDecimal("100000");
-                txtOB_Amt_AbsoluteValue.Text = Rec_Amount_AbsoluteValue.ToString();
+                decimal Crore_Amt = Rec_Amount_AbsoluteValue / Convert.ToDecimal("10000000");
+                txtOB_Amt_Crore.Text = Crore_Amt.ToString();
+                txt_remarks.Focus();
+            }
 
-                if (Rec_Amount_AbsoluteValue != 0)
-                {
-                    decimal Crore_Amt = Rec_Amount_AbsoluteValue / Convert.ToDecimal("10000000");
-                    txtOB_Amt_Crore.Text = Crore_Amt.ToString();
-                    txt_remarks.Focus();
-                }
-
-            }       
+        }
     }
     protected void txtOB_Amt_Crore_TextChanged(object sender, EventArgs e)
     {
@@ -388,14 +498,15 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
     }
     protected void btnSubmit1_Click(object sender, System.EventArgs e)
     {
-
-        if (ddlScheme.SelectedIndex == 0)
+        int VAL= 0;
+        VAL = ddlScheme.SelectedIndex;
+        if (VAL == 1)
         {
             ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('Please Select Scheme!');", true);
             ScriptManager.GetCurrent(Page).SetFocus(ddlScheme);
         }
 
-        else if (rblOfficeTypeH.SelectedIndex == -1)
+        if (rblOfficeTypeH.SelectedIndex == -1)
         {
             ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('Please Select Annual ActionPlan for!');", true);
             ScriptManager.GetCurrent(Page).SetFocus(rblOfficeTypeH);
@@ -430,12 +541,27 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
                     OfficeCode = hfOfficeCode.Value;
 
                 }
+                if (rblOfficeTypeH.SelectedValue == "D")
+                {
+                    OfficeType = "D";
+                    OfficeCode = hfOfficeCode.Value;
+
+                }
+                if (rblOfficeTypeH.SelectedValue == "B")
+                {
+                    OfficeType = "B";
+                    OfficeCode = hfOfficeCode.Value;
+
+                }
+
+
+
                 decimal last_amountAlt = 0;
-                if (hf_lstAmt.Value!="")
+                if (hf_lstAmt.Value != "")
                 {
                     last_amountAlt = Convert.ToDecimal(hf_lstAmt.Value);
                 }
-                 
+
 
                 decimal amt = Convert.ToDecimal(lbl_amt.Text);
                 decimal lksAmt = Convert.ToDecimal(txtOB_Amt.Text.Trim());
@@ -486,19 +612,19 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
                         ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('" + msg + "');", true);
                         //ClearFields_OB();
                         panelAction.Visible = true;
-                        //pnlGrid_OB.Visible = true;
+                       // pnlGrid_OB.Visible = true;
 
                     }
                     else
                     {
                         ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('" + msg + "');", true);
                         panelAction.Visible = true;
-                        //pnlGrid_OB.Visible = false;
+                        //PnlGrid_OB.Visible = true;
                     }
                 }
 
                 ClearFields_OB();
-               
+
 
 
             }
@@ -520,15 +646,6 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
 
         }
     }
-
-
-
-
-
-
-
-
-
     protected decimal ConvertText_To_Decimal(string value)
     {
         try
@@ -647,10 +764,10 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
             string total_amt = db.outParameters[1].Value.ToString();
             db.Close();
 
-           // lbl_totalAlt_Balance.Text = total_amt;
-           // lbl_AvailAlt_Balance.Text = Avail_amt;
-           // HftotalAlt_Balance.Value = lbl_totalAlt_Balance.Text;
-          //  HfAvailAlt_Balance.Value = lbl_AvailAlt_Balance.Text;
+            // lbl_totalAlt_Balance.Text = total_amt;
+            // lbl_AvailAlt_Balance.Text = Avail_amt;
+            // HftotalAlt_Balance.Value = lbl_totalAlt_Balance.Text;
+            //  HfAvailAlt_Balance.Value = lbl_AvailAlt_Balance.Text;
         }
         catch (ApplicationException exception)
         {
@@ -697,7 +814,7 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
             ddlYear.SelectedIndex = utl.ddlSelIndex(ddlYear, hfF_Year.Value);
         }
     }
-    private void   GetAllQuarters_FromFnYear(string FnYear)
+    private void GetAllQuarters_FromFnYear(string FnYear)
     {
         DataSet dsQuarter = new DataSet();
         try
@@ -779,18 +896,31 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
         DataSet dsScheme = new DataSet();
         try
         {
-            db.Open();
+            db.Open(); 
             Regex regDept = new Regex(@"^\d{6}$");
             Regex regYear = new Regex(@"^\d{4}-\d{2}$");
             if (regDept.IsMatch(office_code))
             {
-                dsScheme = db.ExecuteDataSet(CommandType.Text, "select isnull(Allotment_Amt,0) 'amt' from SNA_Allotment where Office_Code='" + office_code+"'");
-                if(dsScheme.Tables[0].Rows.Count > 0)
+               
+                dsScheme = db.ExecuteDataSet(CommandType.Text, "select Sum(isnull(Allotment_Amt,0)) 'amt' from SNA_Allotment where Office_Code='" + office_code + "' and  Fn_Year='" + hfF_Year.Value + "'");
+                if (dsScheme.Tables[0].Rows.Count > 0)
                 {
                     string Avail_amt_state = dsScheme.Tables[0].Rows[0]["amt"].ToString();
-                    lbl_totalAlt_Balance.Text = Avail_amt_state;
+                    if (Avail_amt_state != "")
+                    {
+                        lbl_totalAlt_Balance.Text = Avail_amt_state;
+                    }
+                    else
+                    {
+                        lbl_totalAlt_Balance.Text = "0.00000";
+                    }
+
                 }
-              
+                else
+                {
+                    lbl_totalAlt_Balance.Text = "0.00000";
+                }
+
             }
             else
                 throw new ApplicationException("Invalid Characters!");
@@ -818,18 +948,254 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
     }
     protected void rblOfficeTypeH1_Changed(object sender, EventArgs e)
     {
+        //if (rblOfficeTypeH1.SelectedValue == "H")
+        //{
+        //    ViewState["OfficeType"] = "H";
+        //    panelAction1.Visible = false;
+        //}
         if (rblOfficeTypeH1.SelectedValue == "H")
         {
             ViewState["OfficeType"] = "H";
-           
-            panelAction1.Visible = false;
+            panelAction.Visible = false;
+            lblOfficeType.Text = "State Office";
+            trDistrict.Visible = true;
+            rowBlock.Visible = false;
+            PopulateDistrictsH();
         }
-        
+        if (rblOfficeTypeH1.SelectedValue == "D")
+        {
+            ViewState["OfficeType"] = "D";
+            panelAction.Visible = false;
+            lblOfficeType.Text = "District";
+            trDistrict.Visible = true;
+            rowBlock.Visible = false;
+            PopulateDistrictsH();
+        }
+        if (rblOfficeTypeH1.SelectedValue == "B")
+        {
+            ViewState["OfficeType"] = "B";
+            panelAction.Visible = false;
+            lblOfficeType.Text = "District";
+            trDistrict.Visible = true;
+            rowBlock.Visible = false;
+            PopulateDistrictsH();
+        }
     }
-    
-  
-   
-    
+    protected void PopulateDistrictsH()
+    {
+        DataSet dsDistrict = new DataSet();
+        string strQry = string.Empty;
+        try
+        {
+            this.db.Open();
+            //if (rblOfficeTypeH.SelectedValue == "D")
+            //    dsDistrict = this.db.ExecuteDataSet(CommandType.Text, "SELECT district_code,district_name FROM MASTER_DISTRICT ORDER BY district_name");//WHERE district_code!='2400' 
+            //else
+            //    dsDistrict = this.db.ExecuteDataSet(CommandType.Text, "SELECT district_code,district_name FROM MASTER_DISTRICT WHERE district_code!='2400'  ORDER BY district_name");
+
+            if (hfOfficeType.Value == "H")
+            {
+                if (rblOfficeTypeH1.SelectedValue == "H")
+                {
+                    strQry = "SELECT district_code,district_name FROM MASTER_DISTRICT WHERE district_code='2400'  ORDER BY district_code";
+                }
+                else if (rblOfficeTypeH1.SelectedValue == "D" || rblOfficeTypeH1.SelectedValue == "B")
+                {
+                    strQry = "SELECT district_code,district_name FROM MASTER_DISTRICT WHERE district_code!='2400'  ORDER BY district_code";
+                }
+            }
+            dsDistrict = db.ExecuteDataSet(CommandType.Text, strQry);
+            this.ddlDistrict.DataSource = dsDistrict;
+            this.ddlDistrict.DataValueField = "district_code";
+            this.ddlDistrict.DataTextField = "district_name";
+            this.ddlDistrict.DataBind();
+
+            if (rblOfficeTypeH.SelectedValue == "H")
+                this.ddlDistrict.Items.Insert(0, "Select Office");
+            if (rblOfficeTypeH.SelectedValue == "D")
+                this.ddlDistrict.Items.Insert(0, "===ALL===");
+            if (rblOfficeTypeH.SelectedValue == "B")
+                this.ddlDistrict.Items.Insert(0, "Select District");
+        }
+        catch (Exception exception)
+        {
+            ExceptionHandler.WriteException(exception.Message);
+        }
+        finally
+        {
+            this.db.Close();
+            dsDistrict.Clear();
+            dsDistrict.Dispose();
+        }
+    }
+    protected void PopulateDistrictsD()
+    {
+        DataSet dsDistrict = new DataSet();
+        try
+        {
+            this.db.Open();
+            if (rblOfficeTypeH.SelectedValue == "D")
+                dsDistrict = this.db.ExecuteDataSet(CommandType.Text, "SELECT district_code,district_name FROM MASTER_DISTRICT ORDER BY district_name");//WHERE district_code!='2400' 
+            else
+                dsDistrict = this.db.ExecuteDataSet(CommandType.Text, "SELECT district_code,district_name FROM MASTER_DISTRICT WHERE district_code!='1800'  ORDER BY district_name");
+            this.ddlDistrict.DataSource = dsDistrict;
+            this.ddlDistrict.DataValueField = "district_code";
+            this.ddlDistrict.DataTextField = "district_name";
+            this.ddlDistrict.DataBind();
+            if (rblOfficeTypeH.SelectedValue == "D")
+                this.ddlDistrict.Items.Insert(0, "===ALL===");
+            else
+                this.ddlDistrict.Items.Insert(0, "Select District");
+            if ((hfUserType.Value == "A" || hfUserType.Value == "H" || hfUserType.Value == "S"))
+            {
+                string strOfficeCode = hfOfficeCode.Value;
+                string DistCode = strOfficeCode.Substring(0, 4);
+
+                ddlDistrict.SelectedIndex = utl.ddlSelIndex(ddlDistrict, DistCode);
+                //ddlDistrict.Enabled = false;
+                trDistrict.Visible = true;
+                PopulateBlock(DistCode);
+                rowBlock.Visible = true;
+            }
+            else
+            {
+                ddlDistrict.SelectedIndex = utl.ddlSelIndex(ddlDistrict, dsDistrict.Tables[0].Rows[0]["district_code"].ToString());
+                //ddlDistrict.Enabled = false;
+            }
+
+
+        }
+        catch (Exception exception)
+        {
+            ExceptionHandler.WriteException(exception.Message);
+        }
+        finally
+        {
+            this.db.Close();
+            dsDistrict.Clear();
+            dsDistrict.Dispose();
+        }
+    }
+    protected void ddlDistrict_Changed(object sender, EventArgs e)
+    {
+        //pnlProject.Visible = false;
+        //if (ddlDistrict.SelectedIndex > 0)
+        //    hfDistrictCode.Value = ddlDistrict.SelectedValue;
+
+        //pnlSubScheme.Visible = false;
+        if (ddlDistrict.SelectedIndex > 0)
+        {
+            hfDistrictCode.Value = ddlDistrict.SelectedValue;
+            if (rblOfficeTypeH1.SelectedValue == "B" && ddlDistrict.SelectedIndex > 0)
+            {
+                PopulateBlock(ddlDistrict.SelectedValue);
+                rowBlock.Visible = true;
+            }
+            else
+            {
+                ddlBlock.Items.Clear();
+                rowBlock.Visible = false;
+            }
+        }
+    }
+    protected void PopulateBlock(string DistCode)
+    {
+        DataSet dataSet = new DataSet();
+        try
+        {
+            this.db.Open();
+            Regex regex = new Regex("^\\d{4}$");
+            if (!regex.IsMatch(DistCode))
+            {
+                throw new ApplicationException("Invalid Characters!");
+            }
+            IDBManager dBManager = this.db;
+            string[] strArrays = new string[] { "SELECT block_code,block_name FROM MASTER_BLOCK WHERE district_code='", DistCode, "' ORDER BY block_name" };
+            dataSet = dBManager.ExecuteDataSet(CommandType.Text, string.Concat(strArrays));
+            this.ddlBlock.DataSource = dataSet;
+            this.ddlBlock.DataValueField = "block_code";
+            this.ddlBlock.DataTextField = "block_name";
+            this.ddlBlock.DataBind();
+            //this.ddlBlock.Items.Insert(0, "Select Block");
+            if (rblOfficeTypeH1.SelectedValue == "B")
+                this.ddlBlock.Items.Insert(0, "===ALL===");
+            else
+                this.ddlBlock.Items.Insert(0, "Select Block");
+        }
+        catch (ApplicationException applicationException1)
+        {
+            ApplicationException applicationException = applicationException1;
+            System.Web.UI.ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", string.Concat("alert('", applicationException.Message, "');"), true);
+        }
+        catch (Exception exception1)
+        {
+            Exception exception = exception1;
+            System.Web.UI.ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('Your request could not be completed due to exception. Please intimate technical team for rectification!');", true);
+            ExceptionHandler.WriteLog(ExceptionHandler.CreateErrorMessage(exception));
+        }
+        finally
+        {
+            this.db.Close();
+            dataSet.Clear();
+            dataSet.Dispose();
+        }
+    }
+    protected void ddlDistrict_DataBound(object sender, EventArgs e)
+    {
+        foreach (ListItem myItem in ddlDistrict.Items)
+        {
+            if (myItem.Text == "State Office")
+            {
+
+                myItem.Attributes.Add("style", "color:#FF3300");
+            }
+        }
+    }
+    //#endregion
+
+    //protected void GetBalanceAmt(string FnYear, string DeptCode, string SchemeCode, string OfficeCode, int SubSchemeCode, int HeadCode, string ProgramName)
+    //{
+    //    DataSet dsAAP_Amt = new DataSet();
+    //    string sqlQry = string.Empty;
+        
+    //    try
+    //    {
+
+    //        db.Open();
+    //        Regex regex = new Regex("^\\d{2}$");
+    //        Regex regex1 = new Regex("^\\d{3}$");
+    //        Regex regex2 = new Regex("^\\d{4}-\\d{2}$");
+    //        if (!regex.IsMatch(DeptCode) || !regex1.IsMatch(SchemeCode) || !regex2.IsMatch(FnYear))
+    //        {
+    //            throw new ApplicationException("Invalid Characters!");
+    //        }
+    //        //sqlQry = "SELECT ISNULL(t1.AAP_Amt,0)AAP_Amt FROM(SELECT Dept_Code,Scheme_Code,F_Year,Office_Code,Office_Type ,SubScheme_Code,Head_Code,[Program_Name] ,ISNULL(SUM(AAP_Amt),0)AAP_Amt FROM dbo.SNA_AnnualActionPlan_ProgrammeWise_Dtls WHERE Dept_Code='" + DeptCode + "' AND Scheme_Code='" + SchemeCode + "' AND F_Year='" + FnYear + "' AND Office_Code='" + OfficeCode + "' AND  [Program_Name]='" + ProgramName + "' GROUP BY Dept_Code,Scheme_Code,F_Year,Office_Code,Office_Type,SubScheme_Code,Head_Code,[Program_Name])AS t1  ";
+
+    //        sqlQry = "SELECT ISNULL(t1.Sanction,0)sanction FROM(SELECT Dept_Code, Scheme_Code, Fn_Year, Office_Code , ISNULL(SUM(Allotment_Amt),0)Sanction FROM dbo.SNA_Allotment WHERE Dept_Code = '" + DeptCode + "' AND Scheme_Code = '" + SchemeCode + "'  AND Fn_Year = '2022-23' AND Office_Code = '" + FnYear + "'  GROUP BY Dept_Code,Scheme_Code,Fn_Year,Office_Code)AS t1 ";
+
+
+    //        dsAAP_Amt = this.db.ExecuteDataSet(CommandType.Text, sqlQry);
+            
+    //    }
+    //    catch (ApplicationException applicationException1)
+    //    {
+    //        ApplicationException applicationException = applicationException1;
+    //        System.Web.UI.ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", string.Concat("alert('", applicationException.Message, "');"), true);
+    //    }
+    //    catch (Exception exception1)
+    //    {
+    //        Exception exception = exception1;
+    //        System.Web.UI.ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('Your request could not be completed due to exception. Please intimate technical team for rectification!');", true);
+    //        ExceptionHandler.WriteLog(ExceptionHandler.CreateErrorMessage(exception));
+    //    }
+    //    finally
+    //    {
+    //        this.db.Close();
+    //        dsAAP_Amt.Clear();
+    //        dsAAP_Amt.Dispose();
+    //    }
+    //}
+
     protected void btnCancel11_Click(object sender, System.EventArgs e)
     {
         ClearFields_OB();
@@ -856,27 +1222,71 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
         }
         else
         {
-            //string OfficeCode = "";
-            //string OfficeType = "";
-            //if (rblOfficeTypeH.SelectedValue == "H")
-            //{
-            //    OfficeType = "H";
-            //    OfficeCode = hfOfficeCode.Value;
 
-            //}
-            //if (rblOfficeTypeH.SelectedValue == "D")
-            //{
-            //    OfficeType = "D";
-            //    OfficeCode = ddlDistrict.SelectedValue + "00";
+            string OfficeCode = "";
+            string OfficeType = "";
+            if (rblOfficeTypeH1.SelectedValue == "H")
+            {
+                OfficeType = "H";
+                OfficeCode = hfOfficeCode.Value;
+                GetHeadwise_OB_Dtls(ddlYear.SelectedValue, hfDeptCode.Value, ddlScheme.SelectedValue);
 
-            //}
-            //if (rblOfficeTypeH.SelectedValue == "B")
-            //{
-            //    OfficeType = "B";
-            //    OfficeCode = ddlBlock.SelectedValue;
-            //}
 
-            GetHeadwise_OB_Dtls(ddlYear.SelectedValue, hfDeptCode.Value, ddlScheme.SelectedValue);
+            }
+            if (rblOfficeTypeH1.SelectedValue == "D")
+            {
+                DataSet dsScheme = new DataSet();
+                OfficeType = "D";
+                OfficeCode = ddlDistrict.SelectedValue + "00";
+                GetHeadwise_OB_Dtls(ddlYear.SelectedValue, hfDeptCode.Value, ddlScheme.SelectedValue);
+
+                dsScheme = db.ExecuteDataSet(CommandType.Text, "select Sum(isnull(Allotment_Amt,0)) 'amt' from SNA_Allotment where Office_Code='" + OfficeCode + "' and  Fn_Year='" + hfF_Year.Value + "'");
+                if (dsScheme.Tables[0].Rows.Count > 0)
+                {
+                    string Avail_amt_state = dsScheme.Tables[0].Rows[0]["amt"].ToString();
+                    if (Avail_amt_state != "")
+                    {
+                        lbl_totalAlt_Balance.Text = Avail_amt_state;
+                    }
+                    else
+                    {
+                        lbl_totalAlt_Balance.Text = "0.00000";
+                    }
+
+                }
+                else
+                {
+                    lbl_totalAlt_Balance.Text = "0.00000";
+                }
+
+            }
+            if (rblOfficeTypeH1.SelectedValue == "B")
+            {
+                DataSet dsScheme = new DataSet();
+                OfficeType = "B";
+                OfficeCode = ddlBlock.SelectedValue;
+                GetHeadwise_OB_Dtls(ddlYear.SelectedValue, hfDeptCode.Value, ddlScheme.SelectedValue);
+                dsScheme = db.ExecuteDataSet(CommandType.Text, "select Sum(isnull(Allotment_Amt,0)) 'amt' from SNA_Allotment where Office_Code='" + OfficeCode + "' and  Fn_Year='" + hfF_Year.Value + "'");
+                if (dsScheme.Tables[0].Rows.Count > 0)
+                {
+                    string Avail_amt_state = dsScheme.Tables[0].Rows[0]["amt"].ToString();
+                    if (Avail_amt_state != "")
+                    {
+                        lbl_totalAlt_Balance.Text = Avail_amt_state;
+                    }
+                    else
+                    {
+                        lbl_totalAlt_Balance.Text = "0.00000";
+                    }
+
+                }
+                else
+                {
+                    lbl_totalAlt_Balance.Text = "0.00000";
+                }
+
+
+            }
 
         }
     }
@@ -892,7 +1302,18 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
             OfficeCode = hfOfficeCode.Value;
 
         }
-        
+        if (rblOfficeTypeH1.SelectedValue == "D")
+        {
+            OfficeType = "D";
+            OfficeCode = ddlDistrict.SelectedValue + "00";
+
+        }
+        if (rblOfficeTypeH1.SelectedValue == "B")
+        {
+            OfficeType = "B";
+            OfficeCode = ddlBlock.SelectedValue;
+        }
+
         DataSet dsHeadwiseDtls = new DataSet();
         try
         {
@@ -904,6 +1325,7 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
             db.AddInParameters(4, "@Office_Code", OfficeCode);
             db.AddInParameters(5, "@Office_Type", OfficeType);
             db.Open();
+
             dsHeadwiseDtls = db.ExecuteDataSet(CommandType.StoredProcedure, "USP_ALLOTMENT_GET_HEADWISE_PROGRAMMEWISE_DATA");
             db.Close();
             if (dsHeadwiseDtls != null && dsHeadwiseDtls.Tables.Count > 0 && dsHeadwiseDtls.Tables[0].Rows.Count > 0)
@@ -911,7 +1333,7 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
                 gvActionPlan.DataSource = dsHeadwiseDtls;
                 gvActionPlan.DataBind();
                 gvActionPlan.Columns[15].HeaderText = "Allot Amount <br/> for Qtr-" + ddlQuarterly.SelectedValue + "<br/> (In lakhs)";
-                // gvActionPlan.DataBind();
+                gvActionPlan.DataBind();
                 panelAction1.Visible = true;
 
             }
@@ -919,7 +1341,7 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
             {
                 gvActionPlan.DataSource = dsHeadwiseDtls;
                 gvActionPlan.DataBind();
-                panelAction1.Visible = false;
+                panelAction1.Visible = true;
 
             }
 
@@ -944,7 +1366,7 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
     }
     public string Covert_To_DB_Date_Format_MMDDYYYY(string pstrDate)
     {
-        
+
         if (pstrDate == "")
             return "";
         else
@@ -954,7 +1376,7 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
 
             //CultureInfo provider = new CultureInfo("en-gb", true);
             //return Convert.ToDateTime(DateTime.Parse(pstrDate, provider)).ToString("dd/MM/yyyy");
-          
+
             return pstrDate;
         }
     }
@@ -965,21 +1387,8 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
     }
     protected void FinalSaveData()
     {
-       
-        //if (Session["AuthTokenPage"] == null || utl.validateEmptyString(hfSession.Value.ToString()) || !utl.validateAphaNumeric(hfSession.Value.ToString(), 500))
-        //{
-        //    ExceptionHandler.WriteException("Session Value in Cookie And Hidden Field Does not Match in Scheme Sanction");
-        //    ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('Session Expaired. Please Login again!');", true);
-        //    utl.SessionReset();
-        //}
-        //else if (!((hfSession.Value == Session["AuthTokenPage"].ToString()) || Session["AuthTokenPage"] != null))
-        //{
-        //    ExceptionHandler.WriteException("Session Value in Cookie And Hidden Field Does not Match in Scheme Sanction");
-        //    ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('Session Expaired. Please Login again!');", true);
-        //    utl.SessionReset();
-        //}
-        //else
-        //{
+
+        
         if (ddlScheme.SelectedIndex == 0)
         {
             ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('Please Select Scheme!');", true);
@@ -990,7 +1399,7 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
         {
             try
             {
-                DateTime dt=new DateTime();
+                DateTime dt = new DateTime();
                 string date = null;
                 Regex regDept = new Regex(@"^\d{2}$");
                 Regex regSch = new Regex(@"^\d{3}$");
@@ -1007,13 +1416,27 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
                     OfficeCode = hfOfficeCode.Value;
 
                 }
-                if(rd_alt.SelectedValue=="A")
+                if (rblOfficeTypeH1.SelectedValue == "D")
                 {
-                     date = DateTime.Now.ToString();
-                    Covert_To_DB_Date_Format_MMDDYYYY(date);
-                     dt = Convert.ToDateTime(date);
+                    OfficeType = "D";
+
+                    OfficeCode = ddlDistrict.SelectedValue + "00";
+
                 }
-                
+                if (rblOfficeTypeH1.SelectedValue == "B")
+                {
+                    OfficeType = "B";
+                    OfficeCode = ddlBlock.SelectedValue;
+                }
+
+
+                if (rd_alt.SelectedValue == "A")
+                {
+                    date = DateTime.Now.ToString();
+                    Covert_To_DB_Date_Format_MMDDYYYY(date);
+                    dt = Convert.ToDateTime(date);
+                }
+
                 if (regDept.IsMatch(dept) && regSch.IsMatch(sch) && regYear.IsMatch(fyear))
                 {
                     DataSet dsAAP = new DataSet();
@@ -1159,9 +1582,9 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
                         activity.Remark = db.outParameters[0].Value.ToString(); ;
                         activityid = ActivityLog.InsertActivityLog(activity);
                         ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('" + msg + "');", true);
-                        //ClearFields_OB();
+                        ClearFields_OB();
                         panelAction.Visible = true;
-                        //pnlGrid_OB.Visible = true;
+                       // pnlGrid_OB.Visible = true;
 
                     }
                     else
@@ -1247,14 +1670,24 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
     {
         GridViewRow row = (sender as TextBox).NamingContainer as GridViewRow;
         Label lblAnnualActionPlanAmt = (Label)row.FindControl("lblAnnualActionPlanAmt");
+        Label lblTotal_OB_Sanction_Amt = (Label)row.FindControl("lblTotal_OB_Sanction_Amt");
         Label lblAll4QuaterAmt = (Label)row.FindControl("lblAll4QuaterAmt");
         TextBox txtAAP_Amt = (TextBox)row.FindControl("txtAAP_Amt");
+
+
         if (txtAAP_Amt.Text != "")
         {
             decimal tobeAllot = decimal.Parse(lblAnnualActionPlanAmt.Text) - decimal.Parse(lblAll4QuaterAmt.Text);
-            if (decimal.Parse(txtAAP_Amt.Text) > tobeAllot)
+            decimal tobeOBSan = decimal.Parse(lblTotal_OB_Sanction_Amt.Text) - decimal.Parse(lblAll4QuaterAmt.Text);
+            //if (decimal.Parse(txtAAP_Amt.Text) > tobeAllot)
+            //{
+            //    ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('Allotment must not be grater than action plan  you can only allot " + tobeAllot.ToString() + " lakhs!');", true);
+            //    txtAAP_Amt.Text = "0.00000";
+            //}
+            //else
+            if (decimal.Parse(txtAAP_Amt.Text) > tobeOBSan)
             {
-                ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('Allotment must not be grater than action plan  you can only allot " + tobeAllot.ToString() + " lakhs!');", true);
+                ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('Allotment must not be grater than Sanction Amount and Opening Balance you can only allot " + tobeOBSan.ToString() + " lakhs!');", true);
                 txtAAP_Amt.Text = "0.00000";
             }
             else
@@ -1308,5 +1741,93 @@ public partial class NHM_Allotment_AllotmentToState : System.Web.UI.Page
     protected void rd_alt_SelectedIndexChanged(object sender, EventArgs e)
     {
 
+    }
+
+    //protected void ddlDist_SelectedIndexChanged(object sender, EventArgs e)
+    //{
+    //    if (ddlDistrict.SelectedIndex > 0)
+    //    {
+    //        if (rblOfficeTypeH1.SelectedValue == "B" || rblOfficeTypeH1.SelectedValue == "P")
+    //        {
+    //            this.PopulateBlock(this.ddlDistrict.SelectedValue);
+    //        }
+    //    }
+    //}
+
+
+
+    //protected void PopulateBlock(string DistCode)
+    //{
+    //    DataSet dataSet = new DataSet();
+    //    try
+    //    {
+    //        try
+    //        {
+    //            this.db.Open();
+    //            Regex regex = new Regex("^\\d{4}$");
+    //            if (!regex.IsMatch(DistCode))
+    //            {
+    //                throw new ApplicationException("Invalid Characters!");
+    //            }
+    //            IDBManager dBManager = this.db;
+    //            string[] strArrays = new string[] { "SELECT Office_Code,Office_Name FROM NHM_Office WHERE Left(Office_Code,4)='", DistCode, "' AND Right(Office_Code,2)<>'00' ORDER BY Office_Name" };
+    //            dataSet = dBManager.ExecuteDataSet(CommandType.Text, string.Concat(strArrays));
+    //            if (rblOfficeTypeH1.SelectedValue == "P")
+    //            {
+    //                this.ddlBlock.DataSource = dataSet;
+    //                this.ddlBlock.DataValueField = "Office_Code";
+    //                this.ddlBlock.DataTextField = "Office_Name";
+    //                this.ddlBlock.DataBind();
+    //                this.ddlBlock.Items.Insert(0, "Select Office");
+    //            }
+    //            else
+    //            {
+    //                this.ddlOffice.DataSource = dataSet;
+    //                this.ddlOffice.DataValueField = "Office_Code";
+    //                this.ddlOffice.DataTextField = "Office_Name";
+    //                this.ddlOffice.DataBind();
+    //                this.ddlOffice.Items.Insert(0, "Select Office");
+    //            }
+
+    //        }
+    //        catch (ApplicationException applicationException1)
+    //        {
+    //            ApplicationException applicationException = applicationException1;
+    //            System.Web.UI.ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", string.Concat("alert('", applicationException.Message, "');"), true);
+    //        }
+    //        catch (Exception exception1)
+    //        {
+    //            Exception exception = exception1;
+    //            System.Web.UI.ScriptManager.RegisterClientScriptBlock(this.Page, this.Page.GetType(), "asyncPostBack", "alert('Your request could not be completed due to exception. Please intimate technical team for rectification!');", true);
+    //            ExceptionHandler.WriteLog(ExceptionHandler.CreateErrorMessage(exception));
+    //        }
+    //    }
+    //    finally
+    //    {
+    //        this.db.Close();
+    //        dataSet.Clear();
+    //        dataSet.Dispose();
+    //    }
+    //}
+    protected void ddlBlock_SelectedIndexChanged(object sender, EventArgs e)
+    {
+
+    }
+
+    protected void ddlOffice_SelectedIndexChanged(object sender, EventArgs e)
+    {
+
+    }
+
+    protected void ddlDistrict_SelectedIndexChanged(object sender, EventArgs e)
+    {
+        if (ddlDistrict.SelectedIndex > 0)
+        {
+            if (rblOfficeTypeH1.SelectedValue == "B" || rblOfficeTypeH1.SelectedValue == "P")
+            {
+                //this.PopulateBlock(this.ddlDistrict.SelectedValue);
+            }
+
+        }
     }
 }
